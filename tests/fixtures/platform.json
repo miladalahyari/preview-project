@@ -1,0 +1,12 @@
+{
+  "gitlabApiUrl": "https://gitlab.company.example/api/v4",
+  "centralProjectPath": "company/previews",
+  "centralProjectId": "200",
+  "stateRef": "main",
+  "gitopsRepository": "https://gitlab.company.example/company/previews.git",
+  "bootstrapChartPath": "charts/previews",
+  "workloadChartPath": "charts/example-app",
+  "argocdProject": "previews",
+  "argocdServer": "https://argocd.company.example",
+  "previewDomain": "company.example"
+}

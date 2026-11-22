@@ -1,0 +1,295 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "preview",
+    "provisioning"
+  ],
+  "definitions": {
+    "metadata": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 253,
+          "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
+        },
+        "namespace": {
+          "type": "string",
+          "maxLength": 63,
+          "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "properties": {
+    "preview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "namespace",
+        "sourceProjectId",
+        "expiresAt"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 58,
+          "pattern": "^example-app-[1-9][0-9]*-[1-9][0-9]*$"
+        },
+        "namespace": {
+          "type": "string",
+          "maxLength": 63,
+          "pattern": "^test-example-app-[1-9][0-9]*-[1-9][0-9]*$"
+        },
+        "sourceProjectId": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$"
+        },
+        "expiresAt": {
+          "type": "string",
+          "pattern": "^$|^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+        }
+      }
+    },
+    "provisioning": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "quota",
+        "limits",
+        "resources",
+        "requiredSecrets",
+        "registrySecretDelivery"
+      ],
+      "properties": {
+        "quota": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[0-9]+(\\.[0-9]+)?(n|u|m|k|M|G|T|P|E|Ki|Mi|Gi|Ti|Pi|Ei)?$"
+          },
+          "minProperties": 1
+        },
+        "limits": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "Container",
+                  "Pod",
+                  "PersistentVolumeClaim"
+                ]
+              },
+              "min": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^[0-9]+(\\.[0-9]+)?(n|u|m|k|M|G|T|P|E|Ki|Mi|Gi|Ti|Pi|Ei)?$"
+                },
+                "minProperties": 1
+              },
+              "max": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^[0-9]+(\\.[0-9]+)?(n|u|m|k|M|G|T|P|E|Ki|Mi|Gi|Ti|Pi|Ei)?$"
+                },
+                "minProperties": 1
+              },
+              "default": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^[0-9]+(\\.[0-9]+)?(n|u|m|k|M|G|T|P|E|Ki|Mi|Gi|Ti|Pi|Ei)?$"
+                },
+                "minProperties": 1
+              },
+              "defaultRequest": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^[0-9]+(\\.[0-9]+)?(n|u|m|k|M|G|T|P|E|Ki|Mi|Gi|Ti|Pi|Ei)?$"
+                },
+                "minProperties": 1
+              },
+              "maxLimitRequestRatio": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "^[0-9]+(\\.[0-9]+)?(n|u|m|k|M|G|T|P|E|Ki|Mi|Gi|Ti|Pi|Ei)?$"
+                },
+                "minProperties": 1
+              }
+            }
+          }
+        },
+        "resources": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "apiVersion",
+                  "kind",
+                  "metadata",
+                  "spec"
+                ],
+                "properties": {
+                  "apiVersion": {
+                    "type": "string",
+                    "enum": [
+                      "networking.k8s.io/v1"
+                    ]
+                  },
+                  "kind": {
+                    "const": "NetworkPolicy"
+                  },
+                  "metadata": {
+                    "$ref": "#/definitions/metadata"
+                  },
+                  "spec": {
+                    "type": "object",
+                    "minProperties": 1
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "apiVersion",
+                  "kind",
+                  "metadata",
+                  "spec"
+                ],
+                "properties": {
+                  "apiVersion": {
+                    "type": "string",
+                    "enum": [
+                      "external-secrets.io/v1",
+                      "external-secrets.io/v1beta1"
+                    ]
+                  },
+                  "kind": {
+                    "const": "ExternalSecret"
+                  },
+                  "metadata": {
+                    "$ref": "#/definitions/metadata"
+                  },
+                  "spec": {
+                    "type": "object",
+                    "minProperties": 1
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "apiVersion",
+                  "kind",
+                  "metadata",
+                  "spec"
+                ],
+                "properties": {
+                  "apiVersion": {
+                    "type": "string",
+                    "enum": [
+                      "external-secrets.io/v1",
+                      "external-secrets.io/v1beta1"
+                    ]
+                  },
+                  "kind": {
+                    "const": "SecretStore"
+                  },
+                  "metadata": {
+                    "$ref": "#/definitions/metadata"
+                  },
+                  "spec": {
+                    "type": "object",
+                    "minProperties": 1
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "apiVersion",
+                  "kind",
+                  "metadata"
+                ],
+                "properties": {
+                  "apiVersion": {
+                    "type": "string",
+                    "enum": [
+                      "v1"
+                    ]
+                  },
+                  "kind": {
+                    "const": "ServiceAccount"
+                  },
+                  "metadata": {
+                    "$ref": "#/definitions/metadata"
+                  },
+                  "automountServiceAccountToken": {
+                    "const": false
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "requiredSecrets": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 253,
+            "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$"
+          }
+        },
+        "registrySecretDelivery": {
+          "type": "boolean",
+          "const": true,
+          "description": "Require the scoped in-cluster registry delivery and readiness gate."
+        }
+      }
+    }
+  }
+}

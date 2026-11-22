@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: preview-quota
+  namespace: {{ .Values.preview.namespace | quote }}
+  labels:
+    {{- include "preview-namespace.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+spec:
+  hard:
+    {{- toYaml .Values.provisioning.quota | nindent 4 }}
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: preview-limits
+  namespace: {{ .Values.preview.namespace | quote }}
+  labels:
+    {{- include "preview-namespace.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+spec:
+  limits:
+    {{- toYaml .Values.provisioning.limits | nindent 4 }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: {{ .Values.preview.namespace | quote }}
+  labels:
+    {{- include "preview-namespace.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]

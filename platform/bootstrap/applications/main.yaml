@@ -1,0 +1,76 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: example-app-test
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '0'
+spec:
+  goTemplate: true
+  goTemplateOptions:
+  - missingkey=error
+  generators:
+  - git:
+      repoURL: https://gitlab.company.example/company/previews.git
+      revision: main
+      files:
+      - path: previews/example-app/*.yaml
+  syncPolicy:
+    preserveResourcesOnDeletion: false
+  template:
+    metadata:
+      name: '{{ .preview.id }}'
+      namespace: argocd
+      finalizers:
+      - resources-finalizer.argocd.argoproj.io
+      labels:
+        company.example/ephemeral: 'true'
+      annotations:
+        company.example/expires-at: '{{ .preview.expiresAt }}'
+    spec:
+      project: previews
+      destination:
+        namespace: '{{ .preview.namespace }}'
+        server: https://kubernetes.default.svc
+      sources:
+      - repoURL: https://gitlab.company.example/company/previews.git
+        targetRevision: '{{ .preview.bootstrapRevision }}'
+        path: charts/previews
+        helm:
+          releaseName: '{{ .preview.id }}'
+          values: '{{ dict "preview" (dict "id" .preview.id "namespace" .preview.namespace
+            "sourceProjectId" .preview.sourceProjectId "expiresAt" .preview.expiresAt)
+            "provisioning" .preview.provisioning | toJson }}'
+      - repoURL: https://gitlab.company.example/company/previews.git
+        targetRevision: '{{ .preview.chartRevision }}'
+        path: charts/example-app
+        helm:
+          releaseName: '{{ .preview.id }}'
+          valueFiles:
+          - values-test.yaml
+          parameters:
+          - name: fullnameOverride
+            value: '{{ .preview.id }}'
+            forceString: true
+          - name: image.digest
+            value: '{{ .preview.imageDigest }}'
+            forceString: true
+          - name: ingress.hosts[0].host
+            value: '{{ .preview.host }}'
+            forceString: true
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+        - PruneLast=true
+        - FailOnSharedResource=true
+        - RespectIgnoreDifferences=true
+      revisionHistoryLimit: 3
+      ignoreDifferences:
+      - group: ''
+        kind: ConfigMap
+        name: preview-registry-ready
+        namespace: '{{ .preview.namespace }}'
+        jsonPointers:
+        - /data

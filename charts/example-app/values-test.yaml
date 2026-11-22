@@ -1,0 +1,4 @@
+# Preview-specific values. The trusted ApplicationSet supplies name, digest and host.
+# Change image.repository here together with catalog/example-app.json.
+image:
+  repository: registry.company.example/company/example-app

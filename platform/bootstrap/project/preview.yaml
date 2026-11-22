@@ -1,0 +1,44 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: previews
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: '-10'
+spec:
+  description: Approved example-app preview namespaces and workloads
+  sourceNamespaces:
+  - argocd
+  sourceRepos:
+  - https://gitlab.company.example/company/previews.git
+  destinations:
+  - namespace: test-example-app-*
+    server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+  - group: ''
+    kind: Namespace
+  namespaceResourceWhitelist:
+  - group: ''
+    kind: ResourceQuota
+  - group: ''
+    kind: LimitRange
+  - group: networking.k8s.io
+    kind: NetworkPolicy
+  - group: external-secrets.io
+    kind: ExternalSecret
+  - group: external-secrets.io
+    kind: SecretStore
+  - group: apps
+    kind: Deployment
+  - group: ''
+    kind: Service
+  - group: ''
+    kind: ServiceAccount
+  - group: ''
+    kind: Pod
+  - group: networking.k8s.io
+    kind: Ingress
+  - group: ''
+    kind: ConfigMap
+  - group: rbac.authorization.k8s.io
+    kind: RoleBinding

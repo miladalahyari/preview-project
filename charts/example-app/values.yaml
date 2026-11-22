@@ -1,0 +1,21 @@
+fullnameOverride: example-app
+image:
+  repository: registry.company.example/company/example-app
+  digest: ""
+imagePullSecrets:
+  - name: company-registry
+ingress:
+  className: nginx
+  hosts:
+    - host: test-demo-example-app.company.example
+  # Provision this wildcard certificate separately in each preview namespace,
+  # or use your ingress controller's default wildcard certificate.
+  tls: []
+sourceUrl: https://github.com/OWNER/preview-project
+resources:
+  requests:
+    cpu: 100m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 128Mi

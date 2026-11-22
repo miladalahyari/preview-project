@@ -1,0 +1,280 @@
+# Restrict only the dedicated registry synchronizer; namespace checks are validations, not bypassable selectors.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: preview-registry-sync-secrets
+  annotations:
+    argocd.argoproj.io/sync-wave: '-40'
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      - DELETE
+      resources:
+      - secrets
+      scope: Namespaced
+  matchConditions:
+  - name: preview-registry-controller-only
+    expression: request.userInfo.username == 'system:serviceaccount:previews:preview-registry-sync'
+  variables:
+  - name: target
+    expression: 'request.operation == ''DELETE'' ? oldObject : object'
+  - name: namespaceLabels
+    expression: 'namespaceObject != null && has(namespaceObject.metadata.labels) ? namespaceObject.metadata.labels
+      : {}'
+  - name: previewId
+    expression: '''company.example/preview-id'' in variables.namespaceLabels ? variables.namespaceLabels[''company.example/preview-id'']
+      : '''''
+  - name: labels
+    expression: 'variables.target != null && has(variables.target.metadata.labels) ? variables.target.metadata.labels
+      : {}'
+  - name: annotations
+    expression: 'variables.target != null && has(variables.target.metadata.annotations) ? variables.target.metadata.annotations
+      : {}'
+  - name: oldLabels
+    expression: 'oldObject != null && has(oldObject.metadata.labels) ? oldObject.metadata.labels : {}'
+  - name: oldAnnotations
+    expression: 'oldObject != null && has(oldObject.metadata.annotations) ? oldObject.metadata.annotations
+      : {}'
+  validations:
+  - expression: request.operation in ['CREATE', 'UPDATE']
+    message: The registry synchronizer cannot delete Secrets.
+    reason: Forbidden
+  - expression: 'namespaceObject != null &&
+
+      !has(namespaceObject.metadata.deletionTimestamp) &&
+
+      request.namespace.matches(''^test-example-app-100-[1-9][0-9]*$'') &&
+
+      namespaceObject.metadata.name == request.namespace &&
+
+      variables.previewId.matches(''^example-app-100-[1-9][0-9]*$'') &&
+
+      request.namespace == ''test-'' + variables.previewId &&
+
+      ''company.example/source-project-id'' in variables.namespaceLabels &&
+
+      variables.namespaceLabels[''company.example/source-project-id''] == ''100'' &&
+
+      ''company.example/ephemeral'' in variables.namespaceLabels &&
+
+      variables.namespaceLabels[''company.example/ephemeral''] == ''true'''
+    message: Registry Secret writes require a nonterminating owned example-app project 100 namespace.
+    reason: Forbidden
+  - expression: variables.target != null && variables.target.metadata.name == 'company-registry' && variables.target.metadata.namespace
+      == request.namespace && variables.target.type == 'kubernetes.io/dockerconfigjson'
+    message: Only the fixed Docker registry pull Secret may be synchronized.
+    reason: Forbidden
+  - expression: '''company.example/preview-id'' in variables.labels &&
+
+      variables.labels[''company.example/preview-id''] == variables.previewId &&
+
+      ''company.example/source-project-id'' in variables.labels &&
+
+      variables.labels[''company.example/source-project-id''] == ''100'' &&
+
+      ''company.example/ephemeral'' in variables.labels &&
+
+      variables.labels[''company.example/ephemeral''] == ''true'' &&
+
+      variables.labels.size() == 4 &&
+
+      ''company.example/managed-by'' in variables.labels &&
+
+      variables.labels[''company.example/managed-by''] == ''preview-registry-sync'''
+    message: The registry Secret must have exactly the namespace ownership labels and synchronizer managed-by
+      label.
+    reason: Forbidden
+  - expression: has(variables.target.data) && variables.target.data.size() == 1 && '.dockerconfigjson'
+      in variables.target.data && variables.target.data['.dockerconfigjson'].size() > 0 && (!has(variables.target.stringData)
+      || variables.target.stringData.size() == 0)
+    message: Registry Secret data must contain only a nonempty .dockerconfigjson entry.
+    reason: Forbidden
+  - expression: 'variables.target != null &&
+
+      !has(variables.target.metadata.deletionTimestamp) &&
+
+      (!has(variables.target.metadata.finalizers) || variables.target.metadata.finalizers.size() == 0)
+      &&
+
+      (!has(variables.target.metadata.ownerReferences) || variables.target.metadata.ownerReferences.size()
+      == 0) &&
+
+      (!has(variables.target.immutable) || variables.target.immutable == false)'
+    message: Registry Secrets must remain mutable and cannot have lifecycle ownership metadata.
+    reason: Forbidden
+  - expression: 'variables.annotations.all(key,
+
+      !key.startsWith(''argocd.argoproj.io/'') &&
+
+      !key.startsWith(''argocd-image-updater.argoproj.io/''))'
+    message: The synchronizer cannot create Argo tracking or controller annotations on a registry Secret.
+    reason: Forbidden
+  - expression: 'request.operation != ''UPDATE'' || (
+
+      oldObject != null && oldObject.type == ''kubernetes.io/dockerconfigjson'' &&
+
+      variables.oldLabels == variables.labels &&
+
+      variables.oldAnnotations.all(key,
+
+      !key.startsWith(''argocd.argoproj.io/'') &&
+
+      !key.startsWith(''argocd-image-updater.argoproj.io/'')) &&
+
+      (!has(oldObject.metadata.finalizers) || oldObject.metadata.finalizers.size() == 0) &&
+
+      (!has(oldObject.metadata.ownerReferences) || oldObject.metadata.ownerReferences.size() == 0))'
+    message: Existing Secrets must already have matching synchronizer ownership; foreign or Argo-managed
+      Secrets cannot be adopted.
+    reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: preview-registry-sync-secrets
+  annotations:
+    argocd.argoproj.io/sync-wave: '-30'
+spec:
+  policyName: preview-registry-sync-secrets
+  validationActions:
+  - Deny
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: preview-registry-sync-gates
+  annotations:
+    argocd.argoproj.io/sync-wave: '-40'
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      - DELETE
+      resources:
+      - configmaps
+      scope: Namespaced
+  matchConditions:
+  - name: preview-registry-controller-only
+    expression: request.userInfo.username == 'system:serviceaccount:previews:preview-registry-sync'
+  variables:
+  - name: target
+    expression: 'request.operation == ''DELETE'' ? oldObject : object'
+  - name: namespaceLabels
+    expression: 'namespaceObject != null && has(namespaceObject.metadata.labels) ? namespaceObject.metadata.labels
+      : {}'
+  - name: previewId
+    expression: '''company.example/preview-id'' in variables.namespaceLabels ? variables.namespaceLabels[''company.example/preview-id'']
+      : '''''
+  - name: labels
+    expression: 'variables.target != null && has(variables.target.metadata.labels) ? variables.target.metadata.labels
+      : {}'
+  - name: annotations
+    expression: 'variables.target != null && has(variables.target.metadata.annotations) ? variables.target.metadata.annotations
+      : {}'
+  - name: oldLabels
+    expression: 'oldObject != null && has(oldObject.metadata.labels) ? oldObject.metadata.labels : {}'
+  - name: oldAnnotations
+    expression: 'oldObject != null && has(oldObject.metadata.annotations) ? oldObject.metadata.annotations
+      : {}'
+  validations:
+  - expression: request.operation == 'UPDATE'
+    message: The registry synchronizer may only update readiness ConfigMaps; it cannot create or delete
+      them.
+    reason: Forbidden
+  - expression: 'namespaceObject != null &&
+
+      !has(namespaceObject.metadata.deletionTimestamp) &&
+
+      request.namespace.matches(''^test-example-app-100-[1-9][0-9]*$'') &&
+
+      namespaceObject.metadata.name == request.namespace &&
+
+      variables.previewId.matches(''^example-app-100-[1-9][0-9]*$'') &&
+
+      request.namespace == ''test-'' + variables.previewId &&
+
+      ''company.example/source-project-id'' in variables.namespaceLabels &&
+
+      variables.namespaceLabels[''company.example/source-project-id''] == ''100'' &&
+
+      ''company.example/ephemeral'' in variables.namespaceLabels &&
+
+      variables.namespaceLabels[''company.example/ephemeral''] == ''true'''
+    message: Registry gate updates require a nonterminating owned example-app project 100 namespace.
+    reason: Forbidden
+  - expression: variables.target != null && variables.target.metadata.name == 'preview-registry-ready'
+      && variables.target.metadata.namespace == request.namespace
+    message: Only the fixed preview registry readiness gate may be updated.
+    reason: Forbidden
+  - expression: '''company.example/preview-id'' in variables.labels &&
+
+      variables.labels[''company.example/preview-id''] == variables.previewId &&
+
+      ''company.example/source-project-id'' in variables.labels &&
+
+      variables.labels[''company.example/source-project-id''] == ''100'' &&
+
+      ''company.example/ephemeral'' in variables.labels &&
+
+      variables.labels[''company.example/ephemeral''] == ''true'' &&
+
+      ''company.example/registry-gate'' in variables.labels && variables.labels[''company.example/registry-gate'']
+      == ''true'''
+    message: The readiness gate must match the namespace ownership and carry the registry-gate label.
+    reason: Forbidden
+  - expression: variables.labels == variables.oldLabels && variables.annotations == variables.oldAnnotations
+    message: The synchronizer must preserve readiness gate labels and annotations, including Argo ownership.
+    reason: Forbidden
+  - expression: 'has(variables.target.data) && variables.target.data.size() == 2 &&
+
+      ''state'' in variables.target.data && variables.target.data[''state''] in [''Pending'', ''Ready'']
+      &&
+
+      ''sourceResourceVersion'' in variables.target.data &&
+
+      (variables.target.data[''state''] != ''Ready'' || variables.target.data[''sourceResourceVersion''].size()
+      > 0) &&
+
+      (!has(variables.target.binaryData) || variables.target.binaryData.size() == 0)'
+    message: The readiness gate may contain only state Pending/Ready and sourceResourceVersion; Ready
+      requires a nonempty source version.
+    reason: Forbidden
+  - expression: 'variables.target != null &&
+
+      !has(variables.target.metadata.deletionTimestamp) &&
+
+      (!has(variables.target.metadata.finalizers) || variables.target.metadata.finalizers.size() == 0)
+      &&
+
+      (!has(variables.target.metadata.ownerReferences) || variables.target.metadata.ownerReferences.size()
+      == 0) &&
+
+      (!has(variables.target.immutable) || variables.target.immutable == false)'
+    message: Readiness gates must remain mutable and cannot have lifecycle ownership metadata.
+    reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: preview-registry-sync-gates
+  annotations:
+    argocd.argoproj.io/sync-wave: '-30'
+spec:
+  policyName: preview-registry-sync-gates
+  validationActions:
+  - Deny
