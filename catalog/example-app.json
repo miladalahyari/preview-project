@@ -1,0 +1,78 @@
+{
+  "service": "example-app",
+  "enabled": false,
+  "source": {
+    "projectPath": "company/example-app",
+    "projectId": "100"
+  },
+  "image": {
+    "repository": "registry.company.example/company/example-app"
+  },
+  "chart": {
+    "repository": "https://gitlab.company.example/company/previews.git",
+    "path": "charts/example-app",
+    "approvedRevision": "0000000000000000000000000000000000000000",
+    "valueFiles": [
+      "values-test.yaml"
+    ]
+  },
+  "adapter": {
+    "profile": "standard-http",
+    "imageRepositoryKey": "image.repository",
+    "imageDigestKey": "image.digest",
+    "fullnameKey": "fullnameOverride",
+    "hostKey": "ingress.hosts[0].host"
+  },
+  "endpoint": {
+    "type": "http",
+    "hostname": "example-app",
+    "containerPort": 8080,
+    "readinessPath": "/health",
+    "testPaths": [
+      "/",
+      "/health",
+      "/healthz"
+    ]
+  },
+  "lifecycle": {
+    "ttlHours": 12,
+    "namespacePrefix": "test-example-app-"
+  },
+  "provisioning": {
+    "approved": false,
+    "dependenciesReviewed": false,
+    "repository": "https://gitlab.company.example/company/previews.git",
+    "path": "charts/previews",
+    "approvedRevision": "0000000000000000000000000000000000000000",
+    "networkPolicyFiles": [
+      "provisioning/example-app-network.json"
+    ],
+    "secretIntegrationFiles": [],
+    "requiredSecrets": [
+      "company-registry"
+    ],
+    "quota": {
+      "requests.cpu": "1",
+      "requests.memory": "512Mi",
+      "limits.cpu": "2",
+      "limits.memory": "1Gi",
+      "pods": "5",
+      "services": "5",
+      "persistentvolumeclaims": "0"
+    },
+    "limits": [
+      {
+        "type": "Container",
+        "defaultRequest": {
+          "cpu": "100m",
+          "memory": "64Mi"
+        },
+        "default": {
+          "cpu": "500m",
+          "memory": "128Mi"
+        }
+      }
+    ],
+    "registrySecretDelivery": true
+  }
+}

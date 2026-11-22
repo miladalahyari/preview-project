@@ -1,0 +1,57 @@
+# Non-secret render example only. It does not enable the application catalog.
+preview:
+  id: example-app-123-45678
+  namespace: test-example-app-123-45678
+  sourceProjectId: '123'
+  expiresAt: '2026-11-09T18:00:00Z'
+provisioning:
+  registrySecretDelivery: true
+  quota:
+    requests.cpu: '1'
+    requests.memory: 512Mi
+    limits.cpu: '2'
+    limits.memory: 1Gi
+    pods: '5'
+    services: '5'
+    persistentvolumeclaims: '0'
+  limits:
+  - type: Container
+    defaultRequest:
+      cpu: 100m
+      memory: 64Mi
+    default:
+      cpu: 500m
+      memory: 128Mi
+  resources:
+  - apiVersion: networking.k8s.io/v1
+    kind: NetworkPolicy
+    metadata:
+      name: example-app-approved-traffic
+    spec:
+      podSelector: {}
+      policyTypes:
+      - Ingress
+      - Egress
+      ingress:
+      - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+        ports:
+        - protocol: TCP
+          port: 8080
+      egress:
+      - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+        ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+  requiredSecrets:
+  - company-registry

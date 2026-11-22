@@ -1,0 +1,71 @@
+# Guard only Argo CD writes to the pilot prefix; existing production namespaces do not match.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: preview-argocd-namespaces
+  annotations:
+    argocd.argoproj.io/sync-wave: '-30'
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups:
+      - ''
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      - DELETE
+      resources:
+      - namespaces
+      scope: Cluster
+  matchConditions:
+  - name: argocd-controller-only
+    expression: request.userInfo.username == 'system:serviceaccount:argocd:argocd-application-controller'
+  - name: preview-namespaces-only
+    expression: '(request.operation == ''DELETE'' ? oldObject : object).metadata.name.startsWith(''test-example-app-'')'
+  variables:
+  - name: target
+    expression: 'request.operation == ''DELETE'' ? oldObject : object'
+  - name: labels
+    expression: 'has(variables.target.metadata.labels) ? variables.target.metadata.labels
+      : {}'
+  - name: previewId
+    expression: '''company.example/preview-id'' in variables.labels ? variables.labels[''company.example/preview-id'']
+      : '''''
+  - name: sourceProjectId
+    expression: '''company.example/source-project-id'' in variables.labels ? variables.labels[''company.example/source-project-id'']
+      : '''''
+  - name: oldLabels
+    expression: 'oldObject != null && has(oldObject.metadata.labels) ? oldObject.metadata.labels
+      : {}'
+  validations:
+  - expression: variables.target != null && variables.target.metadata.name.matches('^test-example-app-[1-9][0-9]*-[1-9][0-9]*$')
+    message: The provisioner may mutate only test-example-app project/pipeline namespaces.
+    reason: Forbidden
+  - expression: variables.sourceProjectId.matches('^[1-9][0-9]*$') && variables.previewId.matches('^example-app-[1-9][0-9]*-[1-9][0-9]*$')
+      && variables.previewId.startsWith('example-app-' + variables.sourceProjectId +
+      '-') && variables.target.metadata.name == 'test-' + variables.previewId && 'company.example/ephemeral'
+      in variables.labels && variables.labels['company.example/ephemeral'] == 'true'
+    message: Namespace name and preview ownership labels must agree.
+    reason: Forbidden
+  - expression: "request.operation != 'UPDATE' || (oldObject.metadata.name == variables.target.metadata.name\
+      \ &&\n 'company.example/preview-id' in variables.oldLabels &&\n variables.oldLabels['company.example/preview-id']\
+      \ == variables.previewId &&\n 'company.example/source-project-id' in variables.oldLabels\
+      \ &&\n variables.oldLabels['company.example/source-project-id'] == variables.sourceProjectId\
+      \ &&\n 'company.example/ephemeral' in variables.oldLabels &&\n variables.oldLabels['company.example/ephemeral']\
+      \ == 'true')"
+    message: Existing namespace ownership cannot be adopted, removed, or changed.
+    reason: Forbidden
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: preview-argocd-namespaces
+  annotations:
+    argocd.argoproj.io/sync-wave: '-20'
+spec:
+  policyName: preview-argocd-namespaces
+  validationActions:
+  - Deny

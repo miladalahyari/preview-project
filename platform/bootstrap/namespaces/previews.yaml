@@ -1,0 +1,10 @@
+# Permanent source namespace for the approved registry credential.
+# This does not provision credentials inside generated test namespaces.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: previews
+  annotations:
+    argocd.argoproj.io/sync-wave: '-30'
+  labels:
+    app.kubernetes.io/part-of: preview-platform

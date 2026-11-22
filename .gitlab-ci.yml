@@ -1,0 +1,111 @@
+# Bootstrap only: enable after catalog, platform policies, credentials, and image are approved.
+stages: [validate, prepare, register, ready, activate, cleanup]
+
+workflow:
+  rules:
+    - if: '$PREVIEW_PLATFORM_ENABLED == "true" && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "pipeline" && $PREVIEW_ACTION =~ /^(prepare|register|stop)$/'
+    - if: '$PREVIEW_PLATFORM_ENABLED == "true" && $CI_COMMIT_REF_PROTECTED == "true" && $CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "web" && $PREVIEW_ACTION == "stop"'
+    - if: '$PREVIEW_ACTION != null && $PREVIEW_ACTION != ""'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_OPEN_MERGE_REQUESTS'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+    - when: never
+
+default:
+  image: $PREVIEW_TOOLS_IMAGE
+  before_script:
+    - 'printf "%s\n" "$PREVIEW_TOOLS_IMAGE" | grep -Eq "@sha256:[0-9a-f]{64}$" || { echo "PREVIEW_TOOLS_IMAGE must be pinned by digest" >&2; exit 1; }'
+  interruptible: false
+
+validate:
+  variables:
+    GIT_DEPTH: "0"
+  stage: validate
+  image: python:3.13-slim
+  before_script: []
+  script:
+    - pip install --disable-pip-version-check -r requirements-dev.txt
+    - apt-get update && apt-get install -y --no-install-recommends liblua5.4-0
+    - python3 scripts/install_helm.py
+    - python3 -B scripts/validate.py
+    - python3 scripts/install_gitleaks.py
+    - gitleaks dir . --redact --max-decode-depth 3
+    - gitleaks git . --log-opts=--all --redact --max-decode-depth 3
+  rules:
+    - if: '$PREVIEW_ACTION == null || $PREVIEW_ACTION == ""'
+
+prepare:
+  stage: prepare
+  resource_group: preview-state
+  script:
+    - python3 scripts/preview.py prepare
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "pipeline" && $PREVIEW_ACTION == "prepare"'
+
+register:
+  stage: register
+  resource_group: preview-state
+  script:
+    - python3 scripts/preview.py register
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "pipeline" && $PREVIEW_ACTION == "register"'
+
+ready:
+  stage: ready
+  needs:
+    - job: register
+      artifacts: false
+  script:
+    - python3 scripts/preview.py ready
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "pipeline" && $PREVIEW_ACTION == "register"'
+
+activate:
+  stage: activate
+  needs:
+    - job: ready
+      artifacts: false
+  resource_group: preview-state
+  script:
+    - python3 scripts/preview.py activate
+  environment:
+    name: test/example-app-${PREVIEW_SOURCE_PROJECT_ID}-${PREVIEW_SOURCE_SHA}
+    on_stop: stop
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "pipeline" && $PREVIEW_ACTION == "register"'
+
+stop:
+  stage: cleanup
+  resource_group: preview-state
+  dependencies: []
+  script:
+    - python3 scripts/preview.py stop
+  environment:
+    name: test/example-app-${PREVIEW_SOURCE_PROJECT_ID}-${PREVIEW_SOURCE_SHA}
+    action: stop
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "pipeline" && $PREVIEW_ACTION == "register"'
+      when: manual
+      allow_failure: true
+
+stop:requested:
+  stage: cleanup
+  resource_group: preview-state
+  dependencies: []
+  script:
+    - python3 scripts/preview.py stop-request
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "pipeline" && $PREVIEW_ACTION == "stop"'
+
+stop:standalone:
+  stage: cleanup
+  resource_group: preview-state
+  script:
+    - python3 scripts/preview.py stop
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web" && $PREVIEW_ACTION == "stop"'
+      when: manual
+      allow_failure: false
+

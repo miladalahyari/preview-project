@@ -1,0 +1,6 @@
+apiVersion: v2
+name: example-app
+description: Stateless Company HTTP preview example
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

@@ -1,0 +1,30 @@
+name: Validate public source
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+      - name: Install validation dependencies
+        run: |
+          python3 -m pip install -r requirements-dev.txt
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends liblua5.4-0
+          sudo python3 scripts/install_helm.py
+          sudo python3 scripts/install_gitleaks.py
+      - name: Validate examples, platform and charts
+        run: python3 -B scripts/validate.py
+      - name: Scan files and Git history for secrets
+        run: |
+          gitleaks dir . --redact --max-decode-depth 3
+          gitleaks git . --log-opts=--all --redact --max-decode-depth 3

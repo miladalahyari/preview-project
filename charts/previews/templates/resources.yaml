@@ -1,0 +1,17 @@
+{{- range $resource := .Values.provisioning.resources }}
+{{- $rendered := deepCopy $resource -}}
+{{- $_ := set $rendered.metadata "namespace" $.Values.preview.namespace -}}
+{{- $annotations := $rendered.metadata.annotations | default dict -}}
+{{- $_ := set $annotations "argocd.argoproj.io/sync-wave" "-20" -}}
+{{- $_ := set $rendered.metadata "annotations" $annotations -}}
+{{- $labels := $rendered.metadata.labels | default dict -}}
+{{- $_ := set $labels "company.example/preview-id" $.Values.preview.id -}}
+{{- $_ := set $labels "company.example/source-project-id" $.Values.preview.sourceProjectId -}}
+{{- $_ := set $labels "company.example/ephemeral" "true" -}}
+{{- $_ := set $rendered.metadata "labels" $labels -}}
+{{- if eq $rendered.kind "ServiceAccount" -}}
+{{- $_ := set $rendered "automountServiceAccountToken" false -}}
+{{- end }}
+---
+{{ toYaml $rendered }}
+{{- end }}

@@ -1,0 +1,11 @@
+{{- include "preview-namespace.validate" . -}}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.preview.namespace | quote }}
+  labels:
+    {{- include "preview-namespace.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-30"
+    company.example/expires-at: {{ .Values.preview.expiresAt | quote }}
+    company.example/required-secrets: {{ .Values.provisioning.requiredSecrets | toJson | quote }}

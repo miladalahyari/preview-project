@@ -1,0 +1,119 @@
+# Copy this directory to a separate GitLab application project.
+stages: [test, prepare:test, build, deploy:test]
+variables:
+  TEST_DEPLOYMENTS_ENABLED: "false"
+  TEST_PREVIEW_ACTION:
+    value: deploy
+    options: [deploy, stop]
+    description: Deploy a test tag, or request early cleanup.
+  TEST_PREVIEW_PIPELINE_ID:
+    value: ""
+    description: Original source pipeline ID to stop (required for stop).
+workflow:
+  rules:
+    - if: '$TEST_PREVIEW_ACTION == "stop" && $CI_PIPELINE_SOURCE == "web"'
+    - if: '$TEST_PREVIEW_ACTION == "stop"'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_PIPELINE_SOURCE == "push" && $CI_OPEN_MERGE_REQUESTS && $CI_COMMIT_BRANCH'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE == "push"'
+    - when: never
+unit:test:
+  stage: test
+  image: python:3.13-alpine
+  script:
+    - python3 -m unittest discover -s . -p 'test_*.py'
+  rules:
+    - if: '$TEST_PREVIEW_ACTION != "stop"'
+
+.preview-trigger:
+  inherit:
+    variables: false
+  variables:
+    PREVIEW_SOURCE_PROJECT_ID: $CI_PROJECT_ID
+    PREVIEW_SOURCE_PIPELINE_ID: $CI_PIPELINE_ID
+    PREVIEW_SOURCE_SHA: $CI_COMMIT_SHA
+    PREVIEW_SOURCE_TAG: $CI_COMMIT_TAG
+  trigger:
+    project: company/previews
+    branch: main
+    strategy: depend
+    forward:
+      yaml_variables: true
+      pipeline_variables: false
+  rules:
+    - if: '$TEST_PREVIEW_ACTION != "stop" && $TEST_DEPLOYMENTS_ENABLED == "true" && $CI_COMMIT_TAG =~ /^test[-.]?[a-z0-9]+([._-][a-z0-9]+)*$/'
+
+# Reserve the hostname and check existing leases before any image publication.
+prepare:test:
+  extends: .preview-trigger
+  stage: prepare:test
+  variables:
+    PREVIEW_ACTION: prepare
+
+build:test:
+  stage: build
+  image:
+    name: $TEST_PREVIEW_CI_IMAGE
+    entrypoint: [""]
+  needs:
+    - job: prepare:test
+      artifacts: false
+  script:
+    # Instance-level variables reach job setup. Remove infrastructure credentials
+    # before the trusted helper starts Docker or reads application build inputs.
+    - env -u HELM_TAG_TOKEN -u PREVIEW_GITLAB_TOKEN -u ARGOCD_AUTH_TOKEN -u KUBECONFIG -u KUBE_TOKEN python3 /opt/preview-tools/tools/test_preview_ci.py
+  services:
+    - name: $TEST_DIND_IMAGE
+      alias: docker
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: /certs
+    DOCKER_TLS_VERIFY: "1"
+    DOCKER_CERT_PATH: /certs/client
+  before_script:
+    - 'printf "%s\n" "$TEST_PREVIEW_CI_IMAGE" | grep -Eq "@sha256:[0-9a-f]{64}$"'
+    - 'printf "%s\n" "$TEST_DIND_IMAGE" | grep -Eq "@sha256:[0-9a-f]{64}$"'
+  artifacts:
+    paths:
+      - preview-build.json
+    expire_in: 1 day
+  rules:
+    - if: '$TEST_PREVIEW_ACTION != "stop" && $TEST_DEPLOYMENTS_ENABLED == "true" && $CI_COMMIT_TAG =~ /^test[-.]?[a-z0-9]+([._-][a-z0-9]+)*$/'
+
+# Central registration reads this pipeline's build artifact through GitLab's API;
+# it never trusts a forwarded digest or enables broad pipeline-variable forwarding.
+deploy:test:
+  extends: .preview-trigger
+  stage: deploy:test
+  needs:
+    - job: build:test
+      artifacts: false
+  variables:
+    PREVIEW_ACTION: register
+
+report:test:
+  stage: deploy:test
+  image:
+    name: $TEST_PREVIEW_CI_IMAGE
+    entrypoint: [""]
+  needs:
+    - job: deploy:test
+      artifacts: false
+  script:
+    - env -u HELM_TAG_TOKEN -u PREVIEW_GITLAB_TOKEN -u ARGOCD_AUTH_TOKEN -u KUBECONFIG -u KUBE_TOKEN python3 /opt/preview-tools/tools/test_preview_ci.py report
+  rules:
+    - if: '$TEST_PREVIEW_ACTION != "stop" && $TEST_DEPLOYMENTS_ENABLED == "true" && $CI_COMMIT_TAG =~ /^test[-.]?[a-z0-9]+([._-][a-z0-9]+)*$/'
+
+# New pipeline -> TEST_PREVIEW_ACTION=stop requests cleanup, even if new deploys
+# are disabled. Central validation binds this request to its real source bridge
+# and permits targets only within this source project.
+stop:test:
+  extends: .preview-trigger
+  stage: deploy:test
+  variables:
+    PREVIEW_ACTION: stop
+    PREVIEW_TARGET_PIPELINE_ID: $TEST_PREVIEW_PIPELINE_ID
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web" && $TEST_PREVIEW_ACTION == "stop"'

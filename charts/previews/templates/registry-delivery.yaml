@@ -1,0 +1,36 @@
+# The controller is installed in the permanent previews namespace by GitOps.
+# Only this fixed controller identity receives this fixed target role.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: preview-registry-sync
+  namespace: {{ .Values.preview.namespace | quote }}
+  labels:
+    {{- include "preview-namespace.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "-20"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: preview-registry-target
+subjects:
+  - kind: ServiceAccount
+    apiGroup: ""
+    name: preview-registry-sync
+    namespace: previews
+---
+# The controller owns data only; Argo CD keeps the metadata and object lifecycle.
+# The ApplicationSet must ignore /data and use RespectIgnoreDifferences=true.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: preview-registry-ready
+  namespace: {{ .Values.preview.namespace | quote }}
+  labels:
+    {{- include "preview-namespace.labels" . | nindent 4 }}
+    company.example/registry-gate: "true"
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+data:
+  state: Pending
+  sourceResourceVersion: ""
